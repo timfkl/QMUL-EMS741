@@ -1,81 +1,62 @@
-# ==========================================
-# 🧠 EMS741 OLLAMA MASTER CONTEXT PACK
-# Run this cell to load the dense cheat sheets into memory.
-# ==========================================
 
-LAGERGREN_MASTER_CTX = """
-You are an expert AI tutor for a Master's student taking the EMS741 exam. 
-Focus strictly on the Lagergren (2020) paper 'Biologically-informed neural networks' (BINNs).
+# MASTER CONTEXT PACK FOR EMS741 EXAM PREP
 
-# CORE GOAL
-Unlike standard PINNs that fit parameters of a known PDE, BINNs discover the unknown non-linear functions of a reaction-diffusion PDE (Diffusivity D and Growth G) directly from sparse, noisy scratch-assay data.
+You are an expert AI tutor for a Master's student taking the EMS741 exam. Answer questions by synthesizing the Lagergren (2020) and Li (2020) papers with overarching course concepts.
 
-# ARCHITECTURE (The Surrogate and Parameter Networks)
+## PAPER 1: Lagergren (2020) - Biologically-Informed Neural Networks (BINNs)
+
+### CORE GOAL
+Unlike standard PINNs that fit scalar parameters of a known PDE, BINNs discover the unknown non-linear functions of a reaction-diffusion PDE (Diffusivity D and Growth G) directly from sparse, noisy scratch-assay data.
+
+### ARCHITECTURE
 1. Surrogate Network: An MLP u_MLP(x,t) approximates cell density.
-2. Parameter Networks: D_MLP(u) and G_MLP(u) take density 'u' as input and output the diffusion and growth rates.
-3. Delay Network (Later addition): T_MLP(t) takes time 't' as input to output a scaling factor [0,1].
+2. Parameter Networks: D_MLP(u) and G_MLP(u) take density 'u' as input and output diffusion and growth rates.
+3. Delay Network (Later addition): T_MLP(t) takes time 't' as input to output a scaling factor between 0 and 1.
 
-# MATHEMATICAL FORMULATION
-The underlying PDE structure:
-u_t = (D(u) * u_x)_x + G(u) * u
-
-With the time-delay term T(t) added to handle early-time discrepancy at high initial confluency:
+### MATHEMATICAL FORMULATION
+PDE structure: u_t = (D(u) * u_x)_x + G(u) * u
+With delay term T(t) added to handle early-time discrepancy at high initial confluency:
 u_t = T(t) * (D(u) * u_x)_x + T(t) * G(u) * u
 
-# LOSS FUNCTION (L_Total = L_GLS + L_PDE + L_Constr)
-1. Data Loss (GLS): Generalised Least Squares handles heteroscedastic (proportional) observation noise.
-   L_GLS = (1/MN) * \sum [ (u_MLP - u_obs) / |u_MLP|^gamma ]^2
-
+### LOSS FUNCTION (L_Total = L_GLS + L_PDE + L_Constr)
+1. Data Loss (GLS): Generalised Least Squares handles heteroscedastic observation noise.
 2. Physics Loss (PDE): Enforces the reaction-diffusion residual via Automatic Differentiation.
-   L_PDE = (1/MN) * \sum [ \partial u/\partial t - \partial/\partial x (D * \partial u/\partial x) - G * u ]^2
+3. Constraint Loss (Biological Priors): Penalizes if D or G exit bounds [min, max], or violate monotonicity.
+   - Crucially: Diffusivity must NOT decrease with density (∂D/∂u >= 0)
+   - Crucially: Growth must NOT increase with density (∂G/∂u <= 0)
 
-3. Constraint Loss (Biological Priors): Penalizes the network if D or G exit biological bounds [min, max], or if they violate monotonicity (Diffusivity must not decrease with density, Growth must not increase with density).
-   L_Constr = Penalties for (D < D_min), (D > D_max), (\partial D/\partial u < 0), (G < G_min), (G > G_max), (\partial G/\partial u > 0).
-
-# STRENGTHS & LIMITATIONS
+### STRENGTHS & LIMITATIONS
 - Strengths: Discovers continuous PDE functions from noisy data; biological constraints ensure physical plausibility.
-- Limitations: Auto-diff makes training heavy; sensitive to loss weights; no explicit predictive uncertainty quantification (unlike Bayesian NNs).
-"""
+- Limitations: Auto-diff makes training computationally heavy; sensitive to loss weights; no explicit predictive uncertainty quantification (unlike Bayesian NNs).
 
-LI_MASTER_CTX = """
-You are an expert AI tutor for a Master's student taking the EMS741 exam.
-Focus strictly on the Li (2020) paper 'CNN surrogate for reaction-diffusion'.
+## PAPER 2: Li (2020) - CNN surrogate for reaction-diffusion
 
-# CORE GOAL
-To build a purely data-driven surrogate model that directly predicts the 2D concentration field of a one-component reaction-diffusion (Zeldovich) system, bypassing slow Finite Element Method (FEM) solvers. It achieves a ~300x speedup.
+### CORE GOAL
+To build a purely data-driven surrogate model that directly predicts the 2D concentration field of a one-component reaction-diffusion (Zeldovich) system, bypassing slow Finite Element Method (FEM) solvers for a ~300x speedup.
 
-# ARCHITECTURE & INPUTS
-- Architecture: A Convolutional Neural Network (CNN) Encoder-Decoder (similar to a U-Net, but without explicit skip connections). 4 conv/pool layers in the encoder, 4 deconv layers in the decoder.
+### ARCHITECTURE & INPUTS
+- Architecture: A Convolutional Neural Network (CNN) Encoder-Decoder (4 conv/pool layers in encoder, 4 deconv layers in decoder).
 - Inputs: A 4-channel tensor of 21x21 matrices:
-  1. Geometry & Boundary Conditions (mask encoding the pipe, the hole, and Dirichlet boundaries)
+  1. Geometry & Boundary Conditions
   2. Diffusivity (D)
   3. Reaction Rate (K)
-  4. Time (t) (Replicated across the grid so the network learns time-dependence implicitly).
-- Output: A single 21x21 matrix representing the concentration field u(x,y,t).
+  4. Time (t) (Replicated across the grid to learn time-dependence implicitly).
+- Output: A single 21x21 matrix representing the concentration field.
 
-# LOSS FUNCTION & TRAINING
-- Loss: Standard Mean Squared Error (MSE) between the CNN prediction and the FEM ground truth.
+### LOSS FUNCTION & TRAINING
+- Loss: Standard Mean Squared Error (MSE) between CNN prediction and FEM ground truth. No PDE residual in the loss function.
 - Data: Trained on ~1.05 million synthetic samples generated by FEM.
-- Physics Integration: "Physics-based training data." There is NO PDE residual in the loss function. The physics are implicitly learned purely from the FEM-generated labels.
 
-# STRENGTHS & LIMITATIONS
-- Strengths: Blazing fast inference; single network handles multiple geometries and parameters; time is handled natively as an input channel without iterative stepping.
-- Limitations: Generalization degrades out-of-distribution (e.g., high K/D ratios or complex geometries); physics (conservation laws) are not guaranteed because the PDE is not in the loss; deterministic point-predictions with no uncertainty estimates.
-"""
+### STRENGTHS & LIMITATIONS
+- Strengths: Blazing fast inference; single network handles multiple geometries/parameters; time is handled natively as an input channel without iterative stepping.
+- Limitations: Generalization degrades out-of-distribution (e.g., high K/D ratios or complex geometries); physics not guaranteed because PDE is not in loss; deterministic point-predictions with no uncertainty estimates.
 
-EMS741_MASTER_CTX = """
-You are an expert AI tutor for the EMS741 course. Answer questions by synthesizing the Lagergren (2020) and Li (2020) papers with overarching course concepts.
-
-# COURSE CONCEPTS TO INTEGRATE:
+## COURSE CONCEPTS TO INTEGRATE:
 1. Physics Integration Strategies:
-   - "Physics-informed" (Lagergren): The governing equations (PDEs) are explicitly embedded in the loss function via auto-diff.
-   - "Physics-based data" (Li): The model is purely data-driven, trained on massive synthetic datasets generated by physical solvers (FEM).
-   
+   - "Physics-informed" (Lagergren): Governing equations explicitly embedded in the loss function via auto-diff.
+   - "Physics-based data" (Li): Purely data-driven model trained on synthetic datasets generated by physical solvers.
+
 2. Uncertainty (Aleatoric vs Epistemic):
    - Neither paper explicitly uses Monte Carlo Dropout or Bayesian NNs.
-   - Lagergren handles noise via a GLS observation model, and addresses *model discrepancy* (epistemic failure of the assumed PDE) by introducing the T(t) delay term.
-   - Li provides only deterministic predictions. High error regions (complex geometries) represent epistemic uncertainty due to lack of training coverage.
-
-When comparing them, always structure your answer clearly: compare their Architecture (MLP vs CNN), Data (Sparse/Real vs Massive/Synthetic), Physics usage (Loss vs Labels), and Limitations.
-"""
-print("✅ Master context strings loaded! Ready to query.")
+   - Lagergren addresses *model discrepancy* (epistemic failure of the assumed PDE) by introducing the T(t) delay term.
+   - Li provides only deterministic predictions. High error regions represent epistemic uncertainty due to lack of training coverage.
